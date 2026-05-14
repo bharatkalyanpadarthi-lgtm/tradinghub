@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import sqlite3
+from typing import Any
 
 
 def calculate_pnl(order: sqlite3.Row, exit_price: float) -> tuple[float, float]:
@@ -22,6 +23,7 @@ def close_order(
     order: sqlite3.Row,
     exit_price: float,
     exit_reason: str,
+    notifier: Any = None,
 ) -> None:
     pnl_eur, pnl_percent = calculate_pnl(order, exit_price)
     db.execute(
@@ -44,6 +46,13 @@ def close_order(
             order["id"],
         ),
     )
+    if notifier is not None:
+        closed = db.execute(
+            "SELECT * FROM paper_orders WHERE id = ?",
+            (order["id"],),
+        ).fetchone()
+        if closed is not None:
+            notifier.paper_order_closed(closed)
 
 
 def evaluate_order_exit(
@@ -82,6 +91,7 @@ def evaluate_open_orders_for_symbol(
     symbol: str,
     latest_price: float,
     max_holding_bars: int,
+    notifier: Any = None,
 ) -> None:
     rows = db.execute(
         """
@@ -105,4 +115,5 @@ def evaluate_open_orders_for_symbol(
                 order=row,
                 exit_price=latest_price,
                 exit_reason=exit_reason,
+                notifier=notifier,
             )

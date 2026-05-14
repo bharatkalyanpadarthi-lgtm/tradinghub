@@ -40,6 +40,11 @@ class Settings:
     price_feed_poll_interval_seconds: int
     price_feed_request_timeout_seconds: int
     scheduler_autostart: bool
+    telegram_enabled: bool
+    telegram_bot_token_env: str
+    telegram_allowed_chat_id_env: str
+    telegram_bot_token: str
+    telegram_allowed_chat_id: str
 
 
 def get_settings() -> Settings:
@@ -90,5 +95,23 @@ def get_settings() -> Settings:
         ),
         scheduler_autostart=_parse_bool(
             os.environ.get("TRADENEST_SCHEDULER_AUTOSTART", "false")
+        ),
+        telegram_enabled=_parse_bool(os.environ.get("TRADENEST_TELEGRAM_ENABLED", "true")),
+        telegram_bot_token_env=os.environ.get(
+            "TRADENEST_TELEGRAM_BOT_TOKEN_ENV", "TELEGRAM_BOT_TOKEN"
+        ),
+        telegram_allowed_chat_id_env=os.environ.get(
+            "TRADENEST_TELEGRAM_ALLOWED_CHAT_ID_ENV", "TELEGRAM_ALLOWED_CHAT_ID"
+        ),
+        telegram_bot_token=os.environ.get(
+            os.environ.get("TRADENEST_TELEGRAM_BOT_TOKEN_ENV", "TELEGRAM_BOT_TOKEN"),
+            "",
+        ),
+        telegram_allowed_chat_id=os.environ.get(
+            os.environ.get(
+                "TRADENEST_TELEGRAM_ALLOWED_CHAT_ID_ENV",
+                "TELEGRAM_ALLOWED_CHAT_ID",
+            ),
+            "",
         ),
     )

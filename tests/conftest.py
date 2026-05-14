@@ -40,6 +40,11 @@ def settings(tmp_path):
         price_feed_poll_interval_seconds=30,
         price_feed_request_timeout_seconds=5,
         scheduler_autostart=False,
+        telegram_enabled=False,
+        telegram_bot_token_env="TELEGRAM_BOT_TOKEN",
+        telegram_allowed_chat_id_env="TELEGRAM_ALLOWED_CHAT_ID",
+        telegram_bot_token="",
+        telegram_allowed_chat_id="",
     )
 
 
@@ -98,5 +103,10 @@ def clean_env(monkeypatch):
         "TRADENEST_PRICE_FEED_POLL_INTERVAL_SECONDS",
         "TRADENEST_PRICE_FEED_REQUEST_TIMEOUT_SECONDS",
         "TRADENEST_SCHEDULER_AUTOSTART",
+        "TRADENEST_TELEGRAM_ENABLED",
+        "TRADENEST_TELEGRAM_BOT_TOKEN_ENV",
+        "TRADENEST_TELEGRAM_ALLOWED_CHAT_ID_ENV",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_ALLOWED_CHAT_ID",
     ):
         monkeypatch.delenv(name, raising=False)

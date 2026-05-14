@@ -8,6 +8,7 @@ from typing import Optional
 from tradenest.config import Settings
 from tradenest.schemas import SignalState
 from tradenest.services.paper_orders import close_order
+from tradenest.services.telegram_service import TelegramNotifier
 
 
 def normalize_side(side: str) -> str:
@@ -70,6 +71,7 @@ def close_counter_signal_orders(
                 order=row,
                 exit_price=float(state.payload.price),
                 exit_reason="counter_signal",
+                notifier=TelegramNotifier(settings),
             )
 
 
@@ -146,4 +148,10 @@ class PaperBrokerStage:
 
         state.paper_order_id = cursor.lastrowid
         state.paper_order_status = "open"
+        order = db.execute(
+            "SELECT * FROM paper_orders WHERE id = ?",
+            (state.paper_order_id,),
+        ).fetchone()
+        if order is not None:
+            TelegramNotifier(settings).paper_order_opened(order)
         return state

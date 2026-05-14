@@ -13,6 +13,7 @@ from .config import Settings, get_settings
 from .db import log_audit, session
 from .pipeline import build_pipeline
 from .schemas import SignalSource, SignalState, WebhookPayload
+from .services.telegram_service import TelegramNotifier
 
 
 router = APIRouter()
@@ -197,7 +198,24 @@ async def receive_tradingview_webhook(
             run_id=run_id,
             received_at=_now(),
         )
-        pipeline_state = build_pipeline().run(pipeline_state, db, settings)
+        notifier = TelegramNotifier(settings)
+        try:
+            pipeline_state = build_pipeline().run(pipeline_state, db, settings)
+        except Exception as exc:
+            notifier.system_error(exc.__class__.__name__)
+            raise
+        if pipeline_state.risk_decision == "blocked":
+            notifier.signal_blocked(
+                symbol=payload.symbol,
+                side=payload.side,
+                reason_codes=pipeline_state.risk_reason_codes,
+            )
+        else:
+            notifier.signal_accepted(
+                signal_id=signal_id,
+                symbol=payload.symbol,
+                side=payload.side,
+            )
 
         log_audit(
             db,

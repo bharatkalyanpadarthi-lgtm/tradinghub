@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .config import Settings, get_settings
 from .db import session
+from .services.telegram_service import handle_telegram_update
 
 
 router = APIRouter()
@@ -62,3 +63,12 @@ def get_journal(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
             """
         ).fetchall()
     return {"paper_orders": [dict(row) for row in rows]}
+
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    handled = handle_telegram_update(await request.json(), settings)
+    return {"handled": handled}

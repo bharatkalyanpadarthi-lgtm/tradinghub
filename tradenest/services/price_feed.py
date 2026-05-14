@@ -10,6 +10,7 @@ from urllib.request import urlopen
 from tradenest.config import Settings
 from tradenest.db import migrate, session
 from tradenest.services.paper_orders import evaluate_open_orders_for_symbol
+from tradenest.services.telegram_service import TelegramNotifier
 
 
 def parse_ticker_last_price(data: Dict[str, Any]) -> Optional[float]:
@@ -126,4 +127,5 @@ def poll_open_paper_orders_once(settings: Settings) -> None:
                 symbol=symbol,
                 latest_price=latest_price,
                 max_holding_bars=settings.max_holding_bars,
+                notifier=TelegramNotifier(settings),
             )
