@@ -23,6 +23,31 @@ Backend  http://127.0.0.1:8000
 Dashboard http://127.0.0.1:3000
 ```
 
+## Public Exposure (Cloudflare Tunnel + TradingView)
+
+For the public webhook layer — exposing only `127.0.0.1:8000`'s
+`/webhook/tradingview/{token}` path to the internet via Cloudflare
+Tunnel, and configuring TradingView alerts to call it — see the
+dedicated guide:
+
+```text
+docs/cloudflare-tradingview-setup.md
+```
+
+Key constraints (enforced by that guide):
+
+- One public hostname only: `tradenest-webhook.<your-domain>` →
+  `http://127.0.0.1:8000`. The dashboard stays private.
+- Two-token auth: URL path token (`TRADINGVIEW_PATH_TOKEN`) plus
+  in-body `auth_token` (`TRADINGVIEW_AUTH_TOKEN`).
+- No Cloudflare Access service tokens on this hostname (TradingView
+  cannot send the required headers).
+- No WAF/transformations that modify path, query, headers, or body.
+- Optional launchd templates for `cloudflared` live at
+  `ops/scripts/run-cloudflared.sh` and
+  `ops/launchd/tradenest-cloudflared.plist`. They are templates only;
+  not auto-loaded.
+
 ## Environment
 
 Create `.env` from `.env.example` in **the runtime working dir** and set

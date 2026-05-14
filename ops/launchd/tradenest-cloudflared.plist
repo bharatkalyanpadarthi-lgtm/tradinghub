@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.tradenest.cloudflared</string>
+
+  <!--
+    TEMPLATE — not auto-loaded. See docs/cloudflare-tradingview-setup.md
+    before copying this plist to ~/Library/LaunchAgents/ and loading
+    it with launchctl. The tunnel credentials must already exist in
+    ~/.cloudflared/, and the tunnel `tradenest-webhook` must have been
+    created (either via `cloudflared tunnel create` or via the
+    Cloudflare dashboard's install command).
+  -->
+
+  <key>WorkingDirectory</key>
+  <string>/Users/bharatmacmini/tradenest-runtime</string>
+
+  <!--
+    Wrapper script handles cd, cloudflared discovery, ~/.cloudflared
+    sanity check, timestamped start log, and exec of the real
+    cloudflared process so launchd tracks the right PID.
+    /bin/zsh -lc gives us the user's login PATH (homebrew, etc.).
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec /Users/bharatmacmini/tradenest-runtime/ops/scripts/run-cloudflared.sh</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/bharatmacmini/tradenest-runtime/logs/cloudflared.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bharatmacmini/tradenest-runtime/logs/cloudflared.err.log</string>
+</dict>
+</plist>

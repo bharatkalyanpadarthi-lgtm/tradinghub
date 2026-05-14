@@ -70,3 +70,32 @@
 - Copy any updated plists into `~/Library/LaunchAgents/`.
 - `launchctl unload` then `launchctl load` the affected plist.
 - Re-run healthcheck and a replay dry-run to confirm the service still behaves.
+
+## Cloudflare / TradingView Paper-Mode Checklist
+
+Run this before pointing a real TradingView alert at the public webhook, and any time the tunnel or tokens change. Full procedures live in `docs/cloudflare-tradingview-setup.md`; this list is the gating one.
+
+- Backend reachable locally: `curl -fsS http://127.0.0.1:8000/api/status` → `backend_health: ok`.
+- `~/tradenest-runtime/ops/scripts/healthcheck.sh` exits 0.
+- Cloudflare tunnel connector status is **Healthy** (dashboard or `cloudflared tunnel info tradenest-webhook`).
+- Public hostname resolves: `dig +short tradenest-webhook.<your-domain>` returns Cloudflare IPs.
+- Public health probe matches local: `curl -fsS https://tradenest-webhook.<your-domain>/api/status` returns the same body as the local call.
+- Webhook smoke test (with a fresh ISO timestamp) returns 2xx and lands a row in `signals` + `runs`.
+- Wrong path token returns `HTTP 401 invalid_path_token`.
+- Wrong `auth_token` returns `HTTP 401 invalid_payload_auth_token`.
+- Stale `signal_generated_at` returns `HTTP 422 stale_tradingview_signal`.
+- Duplicate of an accepted signal returns `HTTP 409 duplicate_signal`.
+- No public hostname exists for the dashboard: `dig +short tradenest-dashboard.<your-domain>` is empty.
+- Kill switch exercised: `POST /api/system/kill` blocks the next signal with `risk_decision = blocked`; `POST /api/system/unkill` clears it.
+- `.env` shows `TRADENEST_MODE=paper` and `TRADENEST_KILL_SWITCH=false`.
+- `git check-ignore .env` prints `.env` (i.e. it stays out of the repo).
+
+## Token Rotation (TradingView path token + auth token)
+
+- Generate two new high-entropy tokens (`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`).
+- Update `TRADINGVIEW_PATH_TOKEN` and `TRADINGVIEW_AUTH_TOKEN` in `~/tradenest-runtime/.env`.
+- Reload backend: `launchctl unload` then `launchctl load` `~/Library/LaunchAgents/tradenest-backend.plist`.
+- Update the TradingView alert(s): webhook URL path token segment and `auth_token` value in the alert message.
+- Send one webhook smoke test (curl) and confirm 2xx.
+- Hit the webhook with the **old** path token and confirm `HTTP 401 invalid_path_token`.
+- Confirm the new tokens never made it into the repo: `git status` shows no changes under tracked files.
