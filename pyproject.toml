@@ -16,6 +16,9 @@ dev = [
     "pytest>=8.0,<9.0",
 ]
 
+[project.scripts]
+tradenest-replay = "tradenest.replay.cli:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
