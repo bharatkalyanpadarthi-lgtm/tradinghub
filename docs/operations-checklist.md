@@ -83,7 +83,7 @@ Run this before pointing a real TradingView alert at the public webhook, and any
 - Webhook smoke test (with a fresh ISO timestamp) returns 2xx and lands a row in `signals` + `runs`.
 - Wrong path token returns `HTTP 401 invalid_path_token`.
 - Wrong `auth_token` returns `HTTP 401 invalid_payload_auth_token`.
-- Stale `signal_generated_at` returns `HTTP 422 stale_tradingview_signal`.
+- Stale `event_time` returns `HTTP 422 stale_tradingview_signal`.
 - Duplicate of an accepted signal returns `HTTP 409 duplicate_signal`.
 - No public hostname exists for the dashboard: `dig +short tradenest-dashboard.<your-domain>` is empty.
 - Kill switch exercised: `POST /api/system/kill` blocks the next signal with `risk_decision = blocked`; `POST /api/system/unkill` clears it.

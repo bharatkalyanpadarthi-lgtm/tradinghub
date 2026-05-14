@@ -43,7 +43,7 @@ It enforces, in order:
    Failure → `HTTP 422` with `reason: invalid_payload_schema`.
 3. JSON body field `auth_token` must equal `TRADINGVIEW_AUTH_TOKEN`.
    Mismatch → `HTTP 401` with `reason: invalid_payload_auth_token`.
-4. If `source == "TradingView"`, the `signal_generated_at` timestamp
+4. If `source == "TradingView"`, the `event_time` timestamp
    must be within `TRADINGVIEW_MAX_STALE_SECONDS` of now. Replay and
    Manual sources bypass this stale check.
    Stale → `HTTP 422` with `reason: stale_tradingview_signal`.
@@ -214,15 +214,15 @@ Paste this into the alert's **Message** field:
 {
   "source": "TradingView",
   "auth_token": "<TRADINGVIEW_AUTH_TOKEN>",
-  "strategy_id": "cvd_rubric_v1",
+  "strategy": "cvd_rubric_v1",
   "symbol": "{{ticker}}",
   "side": "{{strategy.order.action}}",
-  "signal_type": "ENTRY",
   "timeframe": "{{interval}}",
-  "bar_id": "{{ticker}}-{{interval}}-{{time}}",
   "price": {{close}},
-  "signal_generated_at": "{{time}}",
-  "atr": "{{plot_0}}"
+  "event_time": "{{time}}",
+  "metadata": {
+    "atr": "{{plot_0}}"
+  }
 }
 ```
 
@@ -232,6 +232,9 @@ Adapt notes — read these before you go live:
   `TRADINGVIEW_AUTH_TOKEN`. TradingView will not template it; you
   paste the real value here. Treat this template as a secret once
   filled in.
+- **`strategy`** must be the backend strategy id, for v1 normally
+  `cvd_rubric_v1`. Do not use `strategy_id` unless the backend schema
+  is changed.
 - **`side`** uses `{{strategy.order.action}}` which TradingView emits
   as lowercase `buy` or `sell`. The backend's `side` field is the
   literal enum `buy | sell | long | short` (lowercase), so this maps
@@ -241,20 +244,48 @@ Adapt notes — read these before you go live:
   number; quoting it would break JSON. If your Pine script ever emits
   a non-numeric value here, TradingView will produce invalid JSON and
   the alert won't fire.
-- **`atr`** is the trickier placeholder. `{{plot_0}}` is the value of
-  the indicator's first plot at fire time — only correct if the
-  indicator on the alert *is* the ATR (or if the strategy's first plot
-  is ATR). If your strategy doesn't expose ATR as plot 0, either:
+- **`event_time`** must be `{{time}}`. The backend's stale check
+  (default 300 s) compares this against server `now()`. If your Pine
+  alert uses `alert()` calls deep in the script, `{{time}}` is the bar
+  time — be aware of bar-close vs. real-time semantics. Do not use
+  `signal_generated_at` unless the backend schema is changed.
+- **`metadata.atr`** is the trickier placeholder. `{{plot_0}}` is the
+  value of the indicator's first plot at fire time — only correct if
+  the indicator on the alert *is* the ATR (or if the strategy's first
+  plot is ATR). If your strategy doesn't expose ATR as plot 0, either:
   - update the Pine script to add an `atr_plot` plot in slot 0, or
-  - drop the `atr` field from the JSON and let the backend's
+  - drop `metadata.atr` from the JSON and let the backend's
     market-features stage compute ATR from the Bybit price feed.
-- **`signal_generated_at`** must be `{{time}}`. The backend's stale
-  check (default 300 s) compares this against server `now()`. If your
-  Pine alert uses `alert()` calls deep in the script, `{{time}}` is
-  the bar time — be aware of bar-close vs. real-time semantics.
+- Do not put `atr` at the top level. The backend schema forbids extra
+  top-level fields.
+- Do not add `signal_type` or `bar_id` unless the backend schema is
+  changed. They are valid replay CSV columns, not webhook JSON fields.
+- If `{{plot_0}}` renders as an empty value or a string that cannot be
+  parsed as ATR, the backend may reject the payload or block the signal
+  during market-feature/risk processing. Use the smoke-test template
+  below to validate the webhook path without TradingView placeholders.
 - The JSON template should validate locally before pasting:
   `python -m json.tool < template.json` (replace placeholders with
   dummy values first).
+
+For local smoke tests, use a deterministic fixture ATR under
+`metadata.atr_fixture`:
+
+```json
+{
+  "source": "TradingView",
+  "auth_token": "<TRADINGVIEW_AUTH_TOKEN>",
+  "strategy": "cvd_rubric_v1",
+  "symbol": "BTCUSDT",
+  "side": "buy",
+  "timeframe": "15m",
+  "price": 65000,
+  "event_time": "<CURRENT_ISO_TIMESTAMP>",
+  "metadata": {
+    "atr_fixture": 120
+  }
+}
+```
 
 ## Test Commands
 
@@ -279,27 +310,22 @@ Cloudflare but the connector is not running locally.
 ### 3. Webhook smoke test (paper-mode safe)
 
 ```bash
+CURRENT_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 curl -sS -X POST "https://tradenest-webhook.<your-domain>/webhook/tradingview/<TRADINGVIEW_PATH_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "source": "TradingView",
-    "auth_token": "<TRADINGVIEW_AUTH_TOKEN>",
-    "strategy_id": "cvd_rubric_v1",
-    "symbol": "BTCUSDT",
-    "side": "buy",
-    "signal_type": "ENTRY",
-    "timeframe": "15m",
-    "bar_id": "BTCUSDT-15m-test-001",
-    "price": 65000,
-    "signal_generated_at": "<CURRENT_ISO_TIMESTAMP>"
-  }'
-```
-
-Replace `<CURRENT_ISO_TIMESTAMP>` with a UTC timestamp inside the
-stale window, e.g. via:
-
-```bash
-python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())"
+  -d "{
+    \"source\": \"TradingView\",
+    \"auth_token\": \"<TRADINGVIEW_AUTH_TOKEN>\",
+    \"strategy\": \"cvd_rubric_v1\",
+    \"symbol\": \"BTCUSDT\",
+    \"side\": \"buy\",
+    \"timeframe\": \"15m\",
+    \"price\": 65000,
+    \"event_time\": \"${CURRENT_TIME}\",
+    \"metadata\": {
+      \"atr_fixture\": 120
+    }
+  }"
 ```
 
 A stale timestamp will be rejected with `HTTP 422 stale_tradingview_signal`.
@@ -329,7 +355,7 @@ phone's mobile data and re-run the curl — same effect.
 6. Webhook curl smoke test returns a 2xx and lands in `/api/journal`.
 7. Repeat the smoke test with a wrong path token — expect `HTTP 401`.
 8. Repeat with a wrong `auth_token` — expect `HTTP 401`.
-9. Repeat with a stale `signal_generated_at` (set it 1 h in the past)
+9. Repeat with a stale `event_time` (set it 1 h in the past)
    — expect `HTTP 422 stale_tradingview_signal`.
 10. Public hostname for the dashboard does **not** exist
     (`dig +short tradenest-dashboard.<your-domain>` should be empty).
@@ -350,8 +376,8 @@ phone's mobile data and re-run the curl — same effect.
 | --- | --- |
 | `HTTP 401 invalid_path_token` | URL path token doesn't match `TRADINGVIEW_PATH_TOKEN` in `.env`. Re-check the path segment (no trailing slash, no extra path). |
 | `HTTP 401 invalid_payload_auth_token` | JSON `auth_token` field doesn't match `TRADINGVIEW_AUTH_TOKEN`. Inspect via `tail -f ~/tradenest-runtime/logs/backend.out.log` while TradingView fires. |
-| `HTTP 422 stale_tradingview_signal` | `signal_generated_at` is older than `TRADINGVIEW_MAX_STALE_SECONDS`. Check Mac mini clock (`sudo sntp -sS time.apple.com`) and TradingView bar-time alignment. |
-| `HTTP 422 invalid_payload_schema` | JSON didn't validate. Common causes: `price` quoted as a string, `side` capitalized, missing required field, TradingView placeholder unresolved (e.g. `{{plot_0}}` literal text). |
+| `HTTP 422 stale_tradingview_signal` | `event_time` is older than `TRADINGVIEW_MAX_STALE_SECONDS`. Check Mac mini clock (`sudo sntp -sS time.apple.com`) and TradingView bar-time alignment. |
+| `HTTP 422 invalid_payload_schema` | JSON didn't validate. Common causes: `price` quoted as a string, `side` capitalized, missing required field, wrong field names such as deprecated/wrong `strategy_id` or `signal_generated_at`, top-level `atr`, or extra fields such as `signal_type` and `bar_id`. |
 | TradingView alert fires but no journal row | If the response code is 2xx, the row is there — query SQLite directly: `sqlite3 ~/tradenest-runtime/data/tradenest.sqlite3 "SELECT * FROM signals ORDER BY id DESC LIMIT 5;"`. If non-2xx, look in `audit_logs` for the rejection reason. |
 | Tunnel down (Cloudflare returns 5xx) | `cloudflared` not running. `launchctl list \| grep cloudflared` or check the Cloudflare dashboard connector status. Restart per Path A or Path B. |
 | Backend down (Cloudflare returns 502) | Tunnel is up but `127.0.0.1:8000` isn't responding. `curl http://127.0.0.1:8000/api/status` locally; check `~/tradenest-runtime/logs/backend.err.log`. |
