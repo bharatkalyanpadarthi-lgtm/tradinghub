@@ -27,6 +27,19 @@ def settings(tmp_path):
         max_trades_per_day=3,
         atr_period=14,
         kill_switch=False,
+        stop_loss_atr_multiplier=1.5,
+        take_profit_atr_multiplier=2.5,
+        default_quantity_eur=100,
+        close_on_counter_signal=True,
+        max_holding_bars=20,
+        position_mode="one_way",
+        price_feed_enabled=True,
+        price_feed_provider="bybit_public_rest",
+        price_feed_category="linear",
+        price_feed_base_url="https://api.bybit.com",
+        price_feed_poll_interval_seconds=30,
+        price_feed_request_timeout_seconds=5,
+        scheduler_autostart=False,
     )
 
 
@@ -72,5 +85,18 @@ def clean_env(monkeypatch):
         "TRADENEST_MAX_TRADES_PER_DAY",
         "TRADENEST_ATR_PERIOD",
         "TRADENEST_KILL_SWITCH",
+        "TRADENEST_STOP_LOSS_ATR_MULTIPLIER",
+        "TRADENEST_TAKE_PROFIT_ATR_MULTIPLIER",
+        "TRADENEST_DEFAULT_QUANTITY_EUR",
+        "TRADENEST_CLOSE_ON_COUNTER_SIGNAL",
+        "TRADENEST_MAX_HOLDING_BARS",
+        "TRADENEST_POSITION_MODE",
+        "TRADENEST_PRICE_FEED_ENABLED",
+        "TRADENEST_PRICE_FEED_PROVIDER",
+        "TRADENEST_PRICE_FEED_CATEGORY",
+        "TRADENEST_PRICE_FEED_BASE_URL",
+        "TRADENEST_PRICE_FEED_POLL_INTERVAL_SECONDS",
+        "TRADENEST_PRICE_FEED_REQUEST_TIMEOUT_SECONDS",
+        "TRADENEST_SCHEDULER_AUTOSTART",
     ):
         monkeypatch.delenv(name, raising=False)

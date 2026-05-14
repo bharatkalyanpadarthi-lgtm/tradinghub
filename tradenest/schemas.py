@@ -49,3 +49,6 @@ class SignalState(BaseModel):
     reason_codes: List[str] = Field(default_factory=list)
     risk_decision: Optional[str] = None
     risk_reason_codes: List[str] = Field(default_factory=list)
+    run_id: Optional[int] = None
+    paper_order_id: Optional[int] = None
+    paper_order_status: Optional[str] = None

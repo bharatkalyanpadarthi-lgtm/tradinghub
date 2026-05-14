@@ -30,8 +30,13 @@ def _system_state_bool(db: sqlite3.Connection, key: str, default: bool = False) 
     return str(row["value"]).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _daily_loss_eur(db: sqlite3.Connection, trade_day: str) -> float:
-    row = db.execute(
+def _daily_loss_eur(
+    db: sqlite3.Connection,
+    *,
+    trade_day: str,
+    timezone_name: str,
+) -> float:
+    risk_row = db.execute(
         """
         SELECT COALESCE(SUM(CASE
             WHEN CAST(realized_pnl_eur AS REAL) < 0
@@ -43,7 +48,24 @@ def _daily_loss_eur(db: sqlite3.Connection, trade_day: str) -> float:
         """,
         (trade_day,),
     ).fetchone()
-    return abs(float(row["loss"]))
+    paper_loss = 0.0
+    order_rows = db.execute(
+        """
+        SELECT realized_pnl_eur, closed_at_utc
+        FROM paper_orders
+        WHERE status = 'closed'
+          AND realized_pnl_eur IS NOT NULL
+          AND closed_at_utc IS NOT NULL
+        """
+    ).fetchall()
+    for row in order_rows:
+        closed_at = datetime.fromisoformat(row["closed_at_utc"])
+        if trade_day_for(closed_at, timezone_name) == trade_day:
+            pnl = float(row["realized_pnl_eur"])
+            if pnl < 0:
+                paper_loss += pnl
+
+    return abs(float(risk_row["loss"]) + paper_loss)
 
 
 def _trade_count_today(db: sqlite3.Connection, trade_day: str) -> int:
@@ -56,6 +78,33 @@ def _trade_count_today(db: sqlite3.Connection, trade_day: str) -> int:
         (trade_day,),
     ).fetchone()
     return int(row["count"])
+
+
+def _normalize_side(side: str) -> str:
+    if side in {"buy", "long"}:
+        return "buy"
+    return "sell"
+
+
+def _open_positions(
+    db: sqlite3.Connection,
+    *,
+    state: SignalState,
+    settings: Settings,
+) -> int:
+    rows = db.execute("SELECT side, strategy, symbol FROM paper_orders WHERE status = 'open'").fetchall()
+    count = 0
+    incoming_side = _normalize_side(state.payload.side)
+    for row in rows:
+        is_counter_order = (
+            settings.close_on_counter_signal
+            and row["strategy"] == state.payload.strategy
+            and row["symbol"] == state.payload.symbol
+            and _normalize_side(row["side"]) != incoming_side
+        )
+        if not is_counter_order:
+            count += 1
+    return max(_system_state_int(db, "open_positions", 0), count)
 
 
 def _cooldown_active(
@@ -95,9 +144,13 @@ class RiskGateStage:
         settings: Settings,
     ) -> SignalState:
         trade_day = trade_day_for(state.received_at, settings.timezone)
-        daily_loss = _daily_loss_eur(db, trade_day)
+        daily_loss = _daily_loss_eur(
+            db,
+            trade_day=trade_day,
+            timezone_name=settings.timezone,
+        )
         trade_count = _trade_count_today(db, trade_day)
-        open_positions = _system_state_int(db, "open_positions", 0)
+        open_positions = _open_positions(db, state=state, settings=settings)
         kill_switch = settings.kill_switch or _system_state_bool(db, "kill_switch", False)
 
         reason_codes = []

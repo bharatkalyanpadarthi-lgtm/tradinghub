@@ -71,6 +71,64 @@ CREATE TABLE IF NOT EXISTS risk_decisions (
     created_at_utc TEXT NOT NULL,
     FOREIGN KEY (signal_id) REFERENCES signals(id)
 );
+
+CREATE TABLE IF NOT EXISTS paper_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_id INTEGER NOT NULL,
+    run_id INTEGER,
+    dedupe_key TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open', 'closed', 'cancelled')),
+    symbol TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    side TEXT NOT NULL,
+    entry_price TEXT NOT NULL,
+    quantity_eur TEXT NOT NULL,
+    quantity TEXT NOT NULL,
+    atr TEXT NOT NULL,
+    sl_price TEXT NOT NULL,
+    tp_price TEXT NOT NULL,
+    exit_price TEXT,
+    exit_reason TEXT CHECK (
+        exit_reason IS NULL OR exit_reason IN (
+            'take_profit_hit',
+            'stop_loss_hit',
+            'counter_signal',
+            'time_exit',
+            'manual_close',
+            'system_shutdown'
+        )
+    ),
+    realized_pnl_eur TEXT,
+    realized_pnl_percent TEXT,
+    bars_held INTEGER NOT NULL DEFAULT 0,
+    max_holding_bars INTEGER NOT NULL,
+    opened_at_utc TEXT NOT NULL,
+    closed_at_utc TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (signal_id) REFERENCES signals(id),
+    FOREIGN KEY (run_id) REFERENCES runs(id)
+);
+
+CREATE TABLE IF NOT EXISTS stage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    signal_id INTEGER,
+    dedupe_key TEXT,
+    stage_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT,
+    payload_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES runs(id),
+    FOREIGN KEY (signal_id) REFERENCES signals(id)
+);
+
+CREATE TABLE IF NOT EXISTS instrument_metadata (
+    symbol TEXT PRIMARY KEY,
+    qty_step TEXT,
+    tick_size TEXT,
+    updated_at_utc TEXT NOT NULL
+);
 """
 
 

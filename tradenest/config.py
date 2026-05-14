@@ -27,6 +27,19 @@ class Settings:
     max_trades_per_day: int
     atr_period: int
     kill_switch: bool
+    stop_loss_atr_multiplier: float
+    take_profit_atr_multiplier: float
+    default_quantity_eur: float
+    close_on_counter_signal: bool
+    max_holding_bars: int
+    position_mode: str
+    price_feed_enabled: bool
+    price_feed_provider: str
+    price_feed_category: str
+    price_feed_base_url: str
+    price_feed_poll_interval_seconds: int
+    price_feed_request_timeout_seconds: int
+    scheduler_autostart: bool
 
 
 def get_settings() -> Settings:
@@ -49,4 +62,33 @@ def get_settings() -> Settings:
         max_trades_per_day=int(os.environ.get("TRADENEST_MAX_TRADES_PER_DAY", "3")),
         atr_period=int(os.environ.get("TRADENEST_ATR_PERIOD", "14")),
         kill_switch=_parse_bool(os.environ.get("TRADENEST_KILL_SWITCH", "false")),
+        stop_loss_atr_multiplier=float(
+            os.environ.get("TRADENEST_STOP_LOSS_ATR_MULTIPLIER", "1.5")
+        ),
+        take_profit_atr_multiplier=float(
+            os.environ.get("TRADENEST_TAKE_PROFIT_ATR_MULTIPLIER", "2.5")
+        ),
+        default_quantity_eur=float(os.environ.get("TRADENEST_DEFAULT_QUANTITY_EUR", "100")),
+        close_on_counter_signal=_parse_bool(
+            os.environ.get("TRADENEST_CLOSE_ON_COUNTER_SIGNAL", "true")
+        ),
+        max_holding_bars=int(os.environ.get("TRADENEST_MAX_HOLDING_BARS", "20")),
+        position_mode=os.environ.get("TRADENEST_POSITION_MODE", "one_way"),
+        price_feed_enabled=_parse_bool(os.environ.get("TRADENEST_PRICE_FEED_ENABLED", "true")),
+        price_feed_provider=os.environ.get(
+            "TRADENEST_PRICE_FEED_PROVIDER", "bybit_public_rest"
+        ),
+        price_feed_category=os.environ.get("TRADENEST_PRICE_FEED_CATEGORY", "linear"),
+        price_feed_base_url=os.environ.get(
+            "TRADENEST_PRICE_FEED_BASE_URL", "https://api.bybit.com"
+        ),
+        price_feed_poll_interval_seconds=int(
+            os.environ.get("TRADENEST_PRICE_FEED_POLL_INTERVAL_SECONDS", "30")
+        ),
+        price_feed_request_timeout_seconds=int(
+            os.environ.get("TRADENEST_PRICE_FEED_REQUEST_TIMEOUT_SECONDS", "5")
+        ),
+        scheduler_autostart=_parse_bool(
+            os.environ.get("TRADENEST_SCHEDULER_AUTOSTART", "false")
+        ),
     )

@@ -135,6 +135,9 @@ def test_sqlite_pragmas_and_required_tables(settings):
         "audit_logs",
         "system_state",
         "risk_decisions",
+        "paper_orders",
+        "stage_events",
+        "instrument_metadata",
     }.issubset(table_names)
     assert journal_mode == "wal"
     assert busy_timeout == 5000

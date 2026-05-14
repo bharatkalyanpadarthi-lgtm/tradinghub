@@ -182,17 +182,19 @@ async def receive_tradingview_webhook(
             )
 
         signal_id = cursor.lastrowid
-        db.execute(
+        run_cursor = db.execute(
             """
             INSERT INTO runs (signal_id, dedupe_key, status, reason)
             VALUES (?, ?, ?, ?)
             """,
             (signal_id, dedupe_key, "accepted", None),
         )
+        run_id = run_cursor.lastrowid
         pipeline_state = SignalState(
             payload=payload,
             signal_id=signal_id,
             dedupe_key=dedupe_key,
+            run_id=run_id,
             received_at=_now(),
         )
         pipeline_state = build_pipeline().run(pipeline_state, db, settings)
@@ -209,8 +211,11 @@ async def receive_tradingview_webhook(
 
         return {
             "status": "accepted",
+            "run_id": run_id,
             "signal_id": signal_id,
             "dedupe_key": dedupe_key,
             "risk_decision": pipeline_state.risk_decision,
             "risk_reason_codes": pipeline_state.risk_reason_codes,
+            "paper_order_id": pipeline_state.paper_order_id,
+            "paper_order_status": pipeline_state.paper_order_status,
         }
