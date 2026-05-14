@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.tradenest.dashboard</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/bharatmacmini/Documents/New project/dashboard</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>export NEXT_PUBLIC_TRADENEST_API_BASE=${NEXT_PUBLIC_TRADENEST_API_BASE:-http://127.0.0.1:8000}; npm run start -- --hostname 127.0.0.1 --port 3000</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/bharatmacmini/Documents/New project/logs/dashboard.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bharatmacmini/Documents/New project/logs/dashboard.err.log</string>
+</dict>
+</plist>
