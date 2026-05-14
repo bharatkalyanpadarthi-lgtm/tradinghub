@@ -5,14 +5,23 @@
   <key>Label</key>
   <string>local.tradenest.dashboard</string>
 
+  <!--
+    Runtime working directory. Wrapper script will cd into dashboard/
+    after loading .env from the runtime root.
+  -->
   <key>WorkingDirectory</key>
-  <string>/Users/bharatmacmini/Documents/New project/dashboard</string>
+  <string>/Users/bharatmacmini/tradenest-runtime/dashboard</string>
 
+  <!--
+    Wrapper script handles cd, .env loading, NEXT_PUBLIC_TRADENEST_API_BASE
+    fallback, timestamped start log, and exec of npm so launchd tracks the
+    real Node PID. /bin/zsh -lc gives us the user's login PATH (nvm, etc.).
+  -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>export NEXT_PUBLIC_TRADENEST_API_BASE=${NEXT_PUBLIC_TRADENEST_API_BASE:-http://127.0.0.1:8000}; npm run start -- --hostname 127.0.0.1 --port 3000</string>
+    <string>exec /Users/bharatmacmini/tradenest-runtime/ops/scripts/run-dashboard.sh</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -21,8 +30,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/bharatmacmini/Documents/New project/logs/dashboard.out.log</string>
+  <string>/Users/bharatmacmini/tradenest-runtime/logs/dashboard.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/bharatmacmini/Documents/New project/logs/dashboard.err.log</string>
+  <string>/Users/bharatmacmini/tradenest-runtime/logs/dashboard.err.log</string>
 </dict>
 </plist>

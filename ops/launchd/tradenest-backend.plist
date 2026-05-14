@@ -5,14 +5,24 @@
   <key>Label</key>
   <string>local.tradenest.backend</string>
 
+  <!--
+    Runtime working directory. The repo (source of truth) lives elsewhere;
+    this directory is the deployed runtime copy that macOS launchd is
+    permitted to read. See docs/runbook.md for repo vs runtime layout.
+  -->
   <key>WorkingDirectory</key>
-  <string>/Users/bharatmacmini/Documents/New project</string>
+  <string>/Users/bharatmacmini/tradenest-runtime</string>
 
+  <!--
+    Wrapper script handles cd, .env loading, timestamped start log, and
+    exec of the real backend process so launchd tracks the right PID.
+    /bin/zsh -lc gives us the user's login PATH (homebrew, pyenv, etc.).
+  -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>source .env &amp;&amp; .venv/bin/python -m uvicorn tradenest.main:app --host 127.0.0.1 --port 8000</string>
+    <string>exec /Users/bharatmacmini/tradenest-runtime/ops/scripts/run-backend.sh</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -21,9 +31,9 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/bharatmacmini/Documents/New project/logs/backend.out.log</string>
+  <string>/Users/bharatmacmini/tradenest-runtime/logs/backend.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/bharatmacmini/Documents/New project/logs/backend.err.log</string>
+  <string>/Users/bharatmacmini/tradenest-runtime/logs/backend.err.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>

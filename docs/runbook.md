@@ -1,14 +1,32 @@
 # TradeNest Local Runbook
 
-This runbook is for the local Mac mini paper-trading MVP. It assumes the repo lives at:
+This runbook is for the local Mac mini paper-trading MVP.
 
-```bash
-/Users/bharatmacmini/Documents/New project
+## Repo vs Runtime Layout
+
+TradeNest runs in three distinct locations on the Mac mini. Keeping them
+separate is what makes the launchd setup reliable.
+
+| Role | Path | Notes |
+| --- | --- | --- |
+| Repo (source of truth) | `/Users/bharatmacmini/Documents/New project` | Git lives here. All edits, commits, and tags happen here. **macOS launchd cannot read this path.** |
+| Runtime working dir | `~/tradenest-runtime` | Deployed copy of the repo that launchd is allowed to read. Backend and dashboard execute here. The active `.env` lives here. |
+| Deployed launchd plists | `~/Library/LaunchAgents/` | Copies of `ops/launchd/*.plist`. macOS reads these to start the backend and dashboard at login. |
+
+Rule of thumb: edit in the repo, sync to `~/tradenest-runtime`, then (if
+plists changed) copy to `~/Library/LaunchAgents/` and reload launchd.
+
+### Backend and Dashboard URLs
+
+```text
+Backend  http://127.0.0.1:8000
+Dashboard http://127.0.0.1:3000
 ```
 
 ## Environment
 
-Create `.env` from `.env.example` and set at least:
+Create `.env` from `.env.example` in **the runtime working dir** and set
+at least:
 
 ```bash
 TRADENEST_DB_PATH=./data/tradenest.sqlite3
@@ -24,17 +42,65 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_CHAT_ID=...
 ```
 
-Validate the environment:
+Validate the environment from the runtime dir:
 
 ```bash
+cd ~/tradenest-runtime
 ops/scripts/validate_env.sh
 ```
+
+## Create or Update `~/tradenest-runtime`
+
+The runtime directory is a deployable copy of the repo plus a populated
+`.env` and the runtime-mutable `data/`, `logs/`, and `backups/` folders.
+
+First-time setup:
+
+```bash
+mkdir -p ~/tradenest-runtime
+rsync -a --delete \
+  --exclude '.git' \
+  --exclude '.venv' \
+  --exclude 'node_modules' \
+  --exclude 'data' \
+  --exclude 'logs' \
+  --exclude 'backups' \
+  --exclude '.env' \
+  "/Users/bharatmacmini/Documents/New project/" \
+  ~/tradenest-runtime/
+
+cd ~/tradenest-runtime
+mkdir -p data logs backups
+cp .env.example .env  # then edit .env to set real tokens
+python3 -m venv .venv
+.venv/bin/pip install -e .
+cd dashboard && npm install && npm run build
+```
+
+Update after a repo change (re-sync code; preserve `.env`, `data/`,
+`logs/`, `backups/`, `.venv`, `node_modules`):
+
+```bash
+rsync -a \
+  --exclude '.git' \
+  --exclude '.venv' \
+  --exclude 'node_modules' \
+  --exclude 'data' \
+  --exclude 'logs' \
+  --exclude 'backups' \
+  --exclude '.env' \
+  "/Users/bharatmacmini/Documents/New project/" \
+  ~/tradenest-runtime/
+```
+
+If `pyproject.toml` changed: `~/tradenest-runtime/.venv/bin/pip install -e .`
+If `dashboard/` changed: `cd ~/tradenest-runtime/dashboard && npm install && npm run build`
 
 ## Start Backend Manually
 
 ```bash
-cd "/Users/bharatmacmini/Documents/New project"
-source .env
+cd ~/tradenest-runtime
+set -a; source .env; set +a
 .venv/bin/python -m uvicorn tradenest.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -47,7 +113,7 @@ curl -fsS http://127.0.0.1:8000/api/status
 ## Start Dashboard Manually
 
 ```bash
-cd "/Users/bharatmacmini/Documents/New project/dashboard"
+cd ~/tradenest-runtime/dashboard
 npm install
 npm run build
 NEXT_PUBLIC_TRADENEST_API_BASE=http://127.0.0.1:8000 npm run start -- --hostname 127.0.0.1 --port 3000
@@ -64,21 +130,26 @@ http://127.0.0.1:3000
 Build the dashboard once before loading launchd:
 
 ```bash
-cd "/Users/bharatmacmini/Documents/New project/dashboard"
+cd ~/tradenest-runtime/dashboard
 npm install
 npm run build
 ```
 
-Install templates:
+Copy plist templates from the repo into `~/Library/LaunchAgents/`:
 
 ```bash
 mkdir -p ~/Library/LaunchAgents
 cp "/Users/bharatmacmini/Documents/New project/ops/launchd/tradenest-backend.plist" ~/Library/LaunchAgents/
 cp "/Users/bharatmacmini/Documents/New project/ops/launchd/tradenest-dashboard.plist" ~/Library/LaunchAgents/
-mkdir -p "/Users/bharatmacmini/Documents/New project/logs"
+mkdir -p ~/tradenest-runtime/logs
 launchctl load ~/Library/LaunchAgents/tradenest-backend.plist
 launchctl load ~/Library/LaunchAgents/tradenest-dashboard.plist
 ```
+
+The plists call `~/tradenest-runtime/ops/scripts/run-backend.sh` and
+`run-dashboard.sh`. Those wrappers cd into `~/tradenest-runtime`, source
+`.env`, log a timestamped start line, and `exec` the real process so
+launchd tracks the correct PID.
 
 ## Unload launchd Services
 
@@ -89,22 +160,30 @@ launchctl unload ~/Library/LaunchAgents/tradenest-backend.plist
 
 ## Replay Dry Run
 
-Use the committed sample file:
+Use the committed sample file. The CLI accepts a numeric `--speed` only
+(e.g. `--speed 20` for 20x, `--speed 0` for as-fast-as-possible). Do not
+suffix with `x`.
 
 ```bash
+cd ~/tradenest-runtime
+set -a; source .env; set +a
 tradenest-replay \
   --file tradenest/replay/sample_signals.csv \
   --target http://127.0.0.1:8000 \
   --path-token "$TRADINGVIEW_PATH_TOKEN" \
   --payload-token "$TRADINGVIEW_AUTH_TOKEN" \
+  --speed 20 \
   --dry-run
 ```
 
-Expected: payloads show `source = Replay`, `auth_token = [redacted]`, and `posted = 0`.
+Expected: payloads show `source = Replay`, `auth_token = [redacted]`, and
+`posted = 0`.
 
 ## Real Replay
 
 ```bash
+cd ~/tradenest-runtime
+set -a; source .env; set +a
 tradenest-replay \
   --file tradenest/replay/sample_signals.csv \
   --target http://127.0.0.1:8000 \
@@ -114,7 +193,26 @@ tradenest-replay \
   --summary-file replay-summary.json
 ```
 
-Expected sample behavior: rows are posted through the same webhook path. Duplicate replays return `409` and are counted as duplicates.
+For maximum throughput (no inter-row delay) use `--speed 0`:
+
+```bash
+tradenest-replay \
+  --file tradenest/replay/sample_signals.csv \
+  --target http://127.0.0.1:8000 \
+  --path-token "$TRADINGVIEW_PATH_TOKEN" \
+  --payload-token "$TRADINGVIEW_AUTH_TOKEN" \
+  --speed 0 \
+  --summary-file replay-summary.json
+```
+
+Expected sample behavior: rows are posted through the same webhook path.
+Duplicate replays return `409` and are counted as duplicates.
+
+Sample CSV:
+
+```text
+tradenest/replay/sample_signals.csv
+```
 
 ## Kill and Unkill
 
@@ -133,7 +231,8 @@ Telegram:
 /unkill
 ```
 
-After `/kill`, submit one replay signal and confirm the latest run has `risk_decision = blocked` with `kill_switch_enabled`.
+After `/kill`, submit one replay signal and confirm the latest run has
+`risk_decision = blocked` with `kill_switch_enabled`.
 
 ## Verify Paper Exits
 
@@ -144,42 +243,47 @@ The automated tests cover:
 - `counter_signal`
 - `time_exit`
 
-Run:
+Run from the repo:
 
 ```bash
+cd "/Users/bharatmacmini/Documents/New project"
 .venv/bin/python -m pytest tests/test_paper_broker.py -q
 ```
 
-For live paper validation, use current price movement or controlled test fixtures rather than waiting for market price to hit SL/TP.
+For live paper validation, use current price movement or controlled test
+fixtures rather than waiting for market price to hit SL/TP.
 
 ## SQLite and Backups
 
-Default database:
+Default database (relative to the runtime working dir):
 
 ```text
-./data/tradenest.sqlite3
+~/tradenest-runtime/data/tradenest.sqlite3
 ```
 
 Default backups:
 
 ```text
-./backups/
+~/tradenest-runtime/backups/
 ```
 
 Create a backup:
 
 ```bash
+cd ~/tradenest-runtime
 ops/scripts/backup_sqlite.sh
 ```
 
 Healthcheck:
 
 ```bash
+cd ~/tradenest-runtime
 ops/scripts/healthcheck.sh
 ```
 
 Rotate logs:
 
 ```bash
+cd ~/tradenest-runtime
 ops/scripts/rotate_logs.sh
 ```
