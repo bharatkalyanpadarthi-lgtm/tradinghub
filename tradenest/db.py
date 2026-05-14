@@ -49,6 +49,28 @@ CREATE TABLE IF NOT EXISTS system_state (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS risk_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_id INTEGER NOT NULL,
+    dedupe_key TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    atr TEXT,
+    signal_valid INTEGER NOT NULL DEFAULT 0,
+    signal_grade TEXT,
+    rubric_version TEXT,
+    reason_codes_json TEXT NOT NULL,
+    daily_loss_eur TEXT NOT NULL DEFAULT '0',
+    realized_pnl_eur TEXT NOT NULL DEFAULT '0',
+    trade_count_today INTEGER NOT NULL DEFAULT 0,
+    open_positions INTEGER NOT NULL DEFAULT 0,
+    trade_day TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY (signal_id) REFERENCES signals(id)
+);
 """
 
 
@@ -70,6 +92,42 @@ def configure_connection(connection: sqlite3.Connection) -> None:
 
 def migrate(connection: sqlite3.Connection) -> None:
     connection.executescript(SCHEMA_SQL)
+
+
+def log_audit(
+    connection: sqlite3.Connection,
+    *,
+    event_type: str,
+    status_value: str,
+    reason: str | None = None,
+    path_token_valid: bool = False,
+    payload_token_valid: bool = False,
+    source: str | None = None,
+    dedupe_key: str | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO audit_logs (
+            event_type,
+            status,
+            reason,
+            path_token_valid,
+            payload_token_valid,
+            source,
+            dedupe_key
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_type,
+            status_value,
+            reason,
+            int(path_token_valid),
+            int(payload_token_valid),
+            source,
+            dedupe_key,
+        ),
+    )
 
 
 @contextmanager

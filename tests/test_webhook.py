@@ -129,7 +129,13 @@ def test_sqlite_pragmas_and_required_tables(settings):
         busy_timeout = db.execute("PRAGMA busy_timeout").fetchone()[0]
         foreign_keys = db.execute("PRAGMA foreign_keys").fetchone()[0]
 
-    assert {"signals", "runs", "audit_logs", "system_state"}.issubset(table_names)
+    assert {
+        "signals",
+        "runs",
+        "audit_logs",
+        "system_state",
+        "risk_decisions",
+    }.issubset(table_names)
     assert journal_mode == "wal"
     assert busy_timeout == 5000
     assert foreign_keys == 1

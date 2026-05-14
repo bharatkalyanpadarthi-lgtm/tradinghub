@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 
 from .config import Settings, get_settings
-from .db import session
-from .schemas import SignalSource, WebhookPayload
+from .db import log_audit, session
+from .pipeline import build_pipeline
+from .schemas import SignalSource, SignalState, WebhookPayload
 
 
 router = APIRouter()
@@ -45,42 +46,6 @@ def build_dedupe_key(payload: WebhookPayload) -> str:
 
     encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-def log_audit(
-    db: sqlite3.Connection,
-    *,
-    event_type: str,
-    status_value: str,
-    reason: str | None = None,
-    path_token_valid: bool = False,
-    payload_token_valid: bool = False,
-    source: str | None = None,
-    dedupe_key: str | None = None,
-) -> None:
-    db.execute(
-        """
-        INSERT INTO audit_logs (
-            event_type,
-            status,
-            reason,
-            path_token_valid,
-            payload_token_valid,
-            source,
-            dedupe_key
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            event_type,
-            status_value,
-            reason,
-            int(path_token_valid),
-            int(payload_token_valid),
-            source,
-            dedupe_key,
-        ),
-    )
 
 
 @router.post("/webhook/tradingview/{secret_path_token}")
@@ -224,6 +189,14 @@ async def receive_tradingview_webhook(
             """,
             (signal_id, dedupe_key, "accepted", None),
         )
+        pipeline_state = SignalState(
+            payload=payload,
+            signal_id=signal_id,
+            dedupe_key=dedupe_key,
+            received_at=_now(),
+        )
+        pipeline_state = build_pipeline().run(pipeline_state, db, settings)
+
         log_audit(
             db,
             event_type="webhook",
@@ -234,4 +207,10 @@ async def receive_tradingview_webhook(
             dedupe_key=dedupe_key,
         )
 
-        return {"status": "accepted", "signal_id": signal_id, "dedupe_key": dedupe_key}
+        return {
+            "status": "accepted",
+            "signal_id": signal_id,
+            "dedupe_key": dedupe_key,
+            "risk_decision": pipeline_state.risk_decision,
+            "risk_reason_codes": pipeline_state.risk_reason_codes,
+        }
