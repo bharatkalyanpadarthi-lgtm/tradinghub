@@ -26,7 +26,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="TradeNest", lifespan=lifespan)
+    app = FastAPI(
+        title="TradeNest",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.include_router(webhook_router)
     app.include_router(api_router)
 

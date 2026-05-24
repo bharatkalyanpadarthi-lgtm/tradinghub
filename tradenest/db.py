@@ -195,3 +195,19 @@ def session(db_path: str) -> Iterator[sqlite3.Connection]:
         yield connection
     finally:
         connection.close()
+
+
+@contextmanager
+def transaction(
+    connection: sqlite3.Connection,
+    *,
+    immediate: bool = False,
+) -> Iterator[None]:
+    connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+    try:
+        yield
+    except Exception:
+        connection.rollback()
+        raise
+    else:
+        connection.commit()

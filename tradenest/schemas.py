@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SignalSource(str, Enum):
@@ -14,9 +14,17 @@ class SignalSource(str, Enum):
 
 
 class Candle(BaseModel):
-    high: float
-    low: float
-    close: float
+    high: float = Field(allow_inf_nan=False)
+    low: float = Field(allow_inf_nan=False)
+    close: float = Field(allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_price_range(self) -> "Candle":
+        if self.high < self.low:
+            raise ValueError("candle_high_below_low")
+        if not self.low <= self.close <= self.high:
+            raise ValueError("candle_close_outside_range")
+        return self
 
 
 class WebhookPayload(BaseModel):
@@ -30,7 +38,7 @@ class WebhookPayload(BaseModel):
     timeframe: str = Field(min_length=1)
     event_time: datetime
     alert_id: Optional[str] = Field(default=None, min_length=1)
-    price: Optional[float] = None
+    price: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
     candles: List[Candle] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 

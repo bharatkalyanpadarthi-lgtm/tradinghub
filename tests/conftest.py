@@ -14,6 +14,7 @@ from tradenest.main import create_app
 def settings(tmp_path):
     return Settings(
         db_path=str(tmp_path / "tradenest.sqlite3"),
+        admin_token="admin-secret",
         tradingview_path_token="path-secret",
         tradingview_auth_token="payload-secret",
         tradingview_max_stale_seconds=300,
@@ -45,6 +46,7 @@ def settings(tmp_path):
         telegram_allowed_chat_id_env="TELEGRAM_ALLOWED_CHAT_ID",
         telegram_bot_token="",
         telegram_allowed_chat_id="",
+        telegram_webhook_secret_token="telegram-webhook-secret",
     )
 
 
@@ -54,7 +56,9 @@ def client(settings):
     app.dependency_overrides[get_settings] = lambda: settings
     with session(settings.db_path) as db:
         migrate(db)
-    return TestClient(app)
+    test_client = TestClient(app)
+    test_client.headers.update({"X-TradeNest-Admin-Token": settings.admin_token})
+    return test_client
 
 
 @pytest.fixture()
@@ -77,6 +81,7 @@ def payload(settings):
 def clean_env(monkeypatch):
     for name in (
         "TRADENEST_DB_PATH",
+        "TRADENEST_ADMIN_TOKEN",
         "TRADINGVIEW_PATH_TOKEN",
         "TRADINGVIEW_AUTH_TOKEN",
         "TRADINGVIEW_MAX_STALE_SECONDS",
@@ -106,6 +111,7 @@ def clean_env(monkeypatch):
         "TRADENEST_TELEGRAM_ENABLED",
         "TRADENEST_TELEGRAM_BOT_TOKEN_ENV",
         "TRADENEST_TELEGRAM_ALLOWED_CHAT_ID_ENV",
+        "TRADENEST_TELEGRAM_WEBHOOK_SECRET_TOKEN",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_ALLOWED_CHAT_ID",
     ):

@@ -59,6 +59,19 @@ def test_invalid_schema_is_rejected(client, settings, payload):
     assert row["reason"] == "invalid_payload_schema"
 
 
+def test_zero_price_payload_is_rejected_before_persistence(client, settings, payload):
+    payload["price"] = 0
+
+    response = post_signal(client, settings, payload)
+
+    assert response.status_code == 422
+    assert count_rows(settings, "signals") == 0
+    assert count_rows(settings, "runs") == 0
+    with session(settings.db_path) as db:
+        row = db.execute("SELECT reason FROM audit_logs").fetchone()
+    assert row["reason"] == "invalid_payload_schema"
+
+
 def test_stale_tradingview_payload_is_rejected(client, settings, payload):
     payload["event_time"] = (
         datetime.now(timezone.utc) - timedelta(seconds=600)
@@ -116,6 +129,31 @@ def test_duplicate_payload_returns_conflict_and_no_second_signal(client, setting
         "status": "duplicate",
         "reason": "duplicate_signal",
     }
+
+
+def test_pipeline_failure_marks_run_error(client, settings, payload, monkeypatch):
+    class FailingPipeline:
+        def run(self, state, db, settings):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("tradenest.webhook.build_pipeline", lambda: FailingPipeline())
+
+    response = post_signal(client, settings, payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["reason"] == "pipeline_error"
+    with session(settings.db_path) as db:
+        run = db.execute("SELECT status, reason FROM runs").fetchone()
+        audit = db.execute("SELECT event_type, status, reason FROM audit_logs").fetchone()
+        paper_orders = db.execute("SELECT COUNT(*) FROM paper_orders").fetchone()[0]
+
+    assert dict(run) == {"status": "error", "reason": "RuntimeError"}
+    assert dict(audit) == {
+        "event_type": "pipeline",
+        "status": "error",
+        "reason": "RuntimeError",
+    }
+    assert paper_orders == 0
 
 
 def test_sqlite_pragmas_and_required_tables(settings):

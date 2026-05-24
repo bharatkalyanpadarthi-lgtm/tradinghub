@@ -14,6 +14,7 @@ def _parse_bool(value: str) -> bool:
 @dataclass(frozen=True)
 class Settings:
     db_path: str
+    admin_token: str
     tradingview_path_token: str
     tradingview_auth_token: str
     tradingview_max_stale_seconds: int
@@ -45,11 +46,13 @@ class Settings:
     telegram_allowed_chat_id_env: str
     telegram_bot_token: str
     telegram_allowed_chat_id: str
+    telegram_webhook_secret_token: str
 
 
 def get_settings() -> Settings:
     return Settings(
         db_path=os.environ.get("TRADENEST_DB_PATH", "./data/tradenest.sqlite3"),
+        admin_token=os.environ.get("TRADENEST_ADMIN_TOKEN", ""),
         tradingview_path_token=os.environ.get("TRADINGVIEW_PATH_TOKEN", ""),
         tradingview_auth_token=os.environ.get("TRADINGVIEW_AUTH_TOKEN", ""),
         tradingview_max_stale_seconds=int(
@@ -112,6 +115,10 @@ def get_settings() -> Settings:
                 "TRADENEST_TELEGRAM_ALLOWED_CHAT_ID_ENV",
                 "TELEGRAM_ALLOWED_CHAT_ID",
             ),
+            "",
+        ),
+        telegram_webhook_secret_token=os.environ.get(
+            "TRADENEST_TELEGRAM_WEBHOOK_SECRET_TOKEN",
             "",
         ),
     )

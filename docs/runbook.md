@@ -55,6 +55,7 @@ at least:
 
 ```bash
 TRADENEST_DB_PATH=./data/tradenest.sqlite3
+TRADENEST_ADMIN_TOKEN=...
 TRADINGVIEW_PATH_TOKEN=...
 TRADINGVIEW_AUTH_TOKEN=...
 TRADENEST_TELEGRAM_ENABLED=false
@@ -65,6 +66,7 @@ If Telegram is enabled, also set:
 ```bash
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_ALLOWED_CHAT_ID=...
+TRADENEST_TELEGRAM_WEBHOOK_SECRET_TOKEN=...
 ```
 
 Validate the environment from the runtime dir:
@@ -132,7 +134,9 @@ set -a; source .env; set +a
 Check health:
 
 ```bash
-curl -fsS http://127.0.0.1:8000/api/status
+curl -fsS \
+  -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/status
 ```
 
 ## Start Dashboard Manually
@@ -244,8 +248,12 @@ tradenest/replay/sample_signals.csv
 Dashboard/API:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/system/kill
-curl -X POST http://127.0.0.1:8000/api/system/unkill
+curl -X POST \
+  -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/system/kill
+curl -X POST \
+  -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/system/unkill
 ```
 
 Telegram:

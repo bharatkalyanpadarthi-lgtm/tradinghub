@@ -111,15 +111,13 @@ credentials for you; you only run `cloudflared` locally as a connector.
 Verification:
 
 ```bash
-curl -fsS https://tradenest-webhook.<your-domain>/api/status
+curl -i https://tradenest-webhook.<your-domain>/api/status
 ```
 
-Note: `/api/status` becoming publicly reachable is a side effect of
-exposing the whole backend through the tunnel. That is acceptable for
-v1 because the public surface area is still just one host, and the
-status endpoint returns no secrets. Production discipline: treat the
-webhook URL as the only intended public path and don't link
-`/api/status` anywhere external.
+Expect `HTTP 401 invalid_admin_token` unless you include
+`X-TradeNest-Admin-Token`. The TradingView webhook path uses its own
+two-token contract; all dashboard/API routes are fail-closed behind the
+admin token.
 
 ## Path B — Locally Managed Tunnel
 
@@ -292,7 +290,9 @@ For local smoke tests, use a deterministic fixture ATR under
 ### 1. Local backend health
 
 ```bash
-curl -fsS http://127.0.0.1:8000/api/status
+curl -fsS \
+  -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" \
+  http://127.0.0.1:8000/api/status
 ```
 
 Expect a JSON body with `"backend_health":"ok"`.
@@ -300,12 +300,12 @@ Expect a JSON body with `"backend_health":"ok"`.
 ### 2. Public tunnel health
 
 ```bash
-curl -fsS https://tradenest-webhook.<your-domain>/api/status
+curl -i https://tradenest-webhook.<your-domain>/api/status
 ```
 
-Expect the same body. If this 502s or hangs, the tunnel connector is
-not healthy. If it returns Cloudflare's HTML error page, DNS routed to
-Cloudflare but the connector is not running locally.
+Expect `HTTP 401 invalid_admin_token`. If this 502s or hangs, the
+tunnel connector is not healthy. If it returns Cloudflare's HTML error
+page, DNS routed to Cloudflare but the connector is not running locally.
 
 ### 3. Webhook smoke test (paper-mode safe)
 
@@ -350,9 +350,9 @@ phone's mobile data and re-run the curl — same effect.
 3. Cloudflare tunnel connector shows Healthy in dashboard or
    foreground logs.
 4. `dig +short tradenest-webhook.<your-domain>` returns Cloudflare IPs.
-5. Public health check (`curl … /api/status`) returns the same JSON
-   as the local backend.
-6. Webhook curl smoke test returns a 2xx and lands in `/api/journal`.
+5. Public `/api/status` check returns `HTTP 401 invalid_admin_token`.
+6. Webhook curl smoke test returns a 2xx and lands in the dashboard journal
+   or SQLite.
 7. Repeat the smoke test with a wrong path token — expect `HTTP 401`.
 8. Repeat with a wrong `auth_token` — expect `HTTP 401`.
 9. Repeat with a stale `event_time` (set it 1 h in the past)
@@ -364,9 +364,9 @@ phone's mobile data and re-run the curl — same effect.
     and a paired row in `runs`.
 13. Trigger the same condition again. Confirm the second hit is
     rejected `HTTP 409 duplicate_signal`.
-14. `curl -X POST http://127.0.0.1:8000/api/system/kill` — confirm
+14. `curl -X POST -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" http://127.0.0.1:8000/api/system/kill` — confirm
     next alert is blocked with `risk_decision = blocked`.
-    `curl -X POST http://127.0.0.1:8000/api/system/unkill` to clear.
+    Use the same header with `/api/system/unkill` to clear.
 15. `TRADENEST_MODE` stays `paper` in `.env`. Live execution is not
     enabled by this commit.
 
@@ -380,7 +380,7 @@ phone's mobile data and re-run the curl — same effect.
 | `HTTP 422 invalid_payload_schema` | JSON didn't validate. Common causes: `price` quoted as a string, `side` capitalized, missing required field, wrong field names such as deprecated/wrong `strategy_id` or `signal_generated_at`, top-level `atr`, or extra fields such as `signal_type` and `bar_id`. |
 | TradingView alert fires but no journal row | If the response code is 2xx, the row is there — query SQLite directly: `sqlite3 ~/tradenest-runtime/data/tradenest.sqlite3 "SELECT * FROM signals ORDER BY id DESC LIMIT 5;"`. If non-2xx, look in `audit_logs` for the rejection reason. |
 | Tunnel down (Cloudflare returns 5xx) | `cloudflared` not running. `launchctl list \| grep cloudflared` or check the Cloudflare dashboard connector status. Restart per Path A or Path B. |
-| Backend down (Cloudflare returns 502) | Tunnel is up but `127.0.0.1:8000` isn't responding. `curl http://127.0.0.1:8000/api/status` locally; check `~/tradenest-runtime/logs/backend.err.log`. |
+| Backend down (Cloudflare returns 502) | Tunnel is up but `127.0.0.1:8000` isn't responding. `curl -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" http://127.0.0.1:8000/api/status` locally; check `~/tradenest-runtime/logs/backend.err.log`. |
 | Port 8000 occupied | `lsof -i :8000` to see what's bound. If a stale uvicorn is left over: `launchctl unload ~/Library/LaunchAgents/tradenest-backend.plist && launchctl load …` |
 | Cloudflare route points to wrong service URL | Dashboard tunnel config Path A: edit Public Hostname → URL. Path B: edit `~/.cloudflared/config.yml` ingress block. |
 | Dashboard accidentally exposed | Check Cloudflare dashboard → Tunnels → Public Hostnames. If a hostname routes to `127.0.0.1:3000`, delete it immediately. The intended config has exactly one hostname routing to `127.0.0.1:8000`. |

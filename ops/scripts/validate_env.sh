@@ -24,6 +24,7 @@ require_env() {
 
 require_env TRADINGVIEW_PATH_TOKEN
 require_env TRADINGVIEW_AUTH_TOKEN
+require_env TRADENEST_ADMIN_TOKEN
 
 DB_PATH="${TRADENEST_DB_PATH:-$ROOT_DIR/data/tradenest.sqlite3}"
 DB_DIR="$(dirname "$DB_PATH")"
@@ -38,6 +39,7 @@ fi
 if [ "${TRADENEST_TELEGRAM_ENABLED:-true}" = "true" ]; then
   require_env TELEGRAM_BOT_TOKEN
   require_env TELEGRAM_ALLOWED_CHAT_ID
+  require_env TRADENEST_TELEGRAM_WEBHOOK_SECRET_TOKEN
 fi
 
 exit "$failures"

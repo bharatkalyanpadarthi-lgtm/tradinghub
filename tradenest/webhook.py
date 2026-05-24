@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 
 from .config import Settings, get_settings
-from .db import log_audit, session
+from .db import log_audit, session, transaction
 from .pipeline import build_pipeline
 from .schemas import SignalSource, SignalState, WebhookPayload
 from .services.telegram_service import TelegramNotifier
@@ -59,8 +59,6 @@ async def receive_tradingview_webhook(
         secret_path_token == settings.tradingview_path_token
     )
 
-    body = await request.json()
-
     with session(settings.db_path) as db:
         if not path_token_valid:
             log_audit(
@@ -73,6 +71,21 @@ async def receive_tradingview_webhook(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"status": "rejected", "reason": "invalid_path_token"},
+            )
+
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            log_audit(
+                db,
+                event_type="validation",
+                status_value="rejected",
+                reason="invalid_json_body",
+                path_token_valid=True,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={"status": "rejected", "reason": "invalid_payload_schema"},
             )
 
         try:
@@ -129,81 +142,145 @@ async def receive_tradingview_webhook(
         dedupe_key = build_dedupe_key(payload)
         payload_json = payload.model_dump_json()
 
-        try:
-            cursor = db.execute(
-                """
-                INSERT INTO signals (
-                    dedupe_key,
-                    source,
-                    symbol,
-                    side,
-                    strategy,
-                    timeframe,
-                    event_time,
-                    alert_id,
-                    price,
-                    payload_json
+        notifier = TelegramNotifier(settings)
+        duplicate_signal = False
+        pipeline_error: Exception | None = None
+        response_body: Dict[str, Any] | None = None
+        pipeline_state: SignalState | None = None
+
+        with transaction(db, immediate=True):
+            try:
+                cursor = db.execute(
+                    """
+                    INSERT INTO signals (
+                        dedupe_key,
+                        source,
+                        symbol,
+                        side,
+                        strategy,
+                        timeframe,
+                        event_time,
+                        alert_id,
+                        price,
+                        payload_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        dedupe_key,
+                        payload.source.value,
+                        payload.symbol,
+                        payload.side,
+                        payload.strategy,
+                        payload.timeframe,
+                        event_time.isoformat(),
+                        payload.alert_id,
+                        str(payload.price) if payload.price is not None else None,
+                        payload_json,
+                    ),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    dedupe_key,
-                    payload.source.value,
-                    payload.symbol,
-                    payload.side,
-                    payload.strategy,
-                    payload.timeframe,
-                    event_time.isoformat(),
-                    payload.alert_id,
-                    str(payload.price) if payload.price is not None else None,
-                    payload_json,
-                ),
-            )
-        except sqlite3.IntegrityError:
-            log_audit(
-                db,
-                event_type="dedupe",
-                status_value="duplicate",
-                reason="duplicate_signal",
-                path_token_valid=True,
-                payload_token_valid=True,
-                source=payload.source.value,
-                dedupe_key=dedupe_key,
-            )
-            db.execute(
-                """
-                INSERT INTO runs (dedupe_key, status, reason)
-                VALUES (?, ?, ?)
-                """,
-                (dedupe_key, "duplicate", "duplicate_signal"),
-            )
+            except sqlite3.IntegrityError:
+                duplicate_signal = True
+                log_audit(
+                    db,
+                    event_type="dedupe",
+                    status_value="duplicate",
+                    reason="duplicate_signal",
+                    path_token_valid=True,
+                    payload_token_valid=True,
+                    source=payload.source.value,
+                    dedupe_key=dedupe_key,
+                )
+                db.execute(
+                    """
+                    INSERT INTO runs (dedupe_key, status, reason)
+                    VALUES (?, ?, ?)
+                    """,
+                    (dedupe_key, "duplicate", "duplicate_signal"),
+                )
+            else:
+                signal_id = cursor.lastrowid
+                run_cursor = db.execute(
+                    """
+                    INSERT INTO runs (signal_id, dedupe_key, status, reason)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (signal_id, dedupe_key, "accepted", None),
+                )
+                run_id = run_cursor.lastrowid
+                pipeline_state = SignalState(
+                    payload=payload,
+                    signal_id=signal_id,
+                    dedupe_key=dedupe_key,
+                    run_id=run_id,
+                    received_at=_now(),
+                )
+                try:
+                    pipeline_state = build_pipeline().run(pipeline_state, db, settings)
+                except Exception as exc:
+                    pipeline_error = exc
+                    db.execute(
+                        """
+                        UPDATE runs
+                        SET status = ?, reason = ?
+                        WHERE id = ?
+                        """,
+                        ("error", exc.__class__.__name__, run_id),
+                    )
+                    log_audit(
+                        db,
+                        event_type="pipeline",
+                        status_value="error",
+                        reason=exc.__class__.__name__,
+                        path_token_valid=True,
+                        payload_token_valid=True,
+                        source=payload.source.value,
+                        dedupe_key=dedupe_key,
+                    )
+                else:
+                    log_audit(
+                        db,
+                        event_type="webhook",
+                        status_value="accepted",
+                        path_token_valid=True,
+                        payload_token_valid=True,
+                        source=payload.source.value,
+                        dedupe_key=dedupe_key,
+                    )
+                    response_body = {
+                        "status": "accepted",
+                        "run_id": run_id,
+                        "signal_id": signal_id,
+                        "dedupe_key": dedupe_key,
+                        "risk_decision": pipeline_state.risk_decision,
+                        "risk_reason_codes": pipeline_state.risk_reason_codes,
+                        "paper_order_id": pipeline_state.paper_order_id,
+                        "paper_order_status": pipeline_state.paper_order_status,
+                    }
+
+        if duplicate_signal:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"status": "duplicate", "reason": "duplicate_signal"},
             )
 
-        signal_id = cursor.lastrowid
-        run_cursor = db.execute(
-            """
-            INSERT INTO runs (signal_id, dedupe_key, status, reason)
-            VALUES (?, ?, ?, ?)
-            """,
-            (signal_id, dedupe_key, "accepted", None),
-        )
-        run_id = run_cursor.lastrowid
-        pipeline_state = SignalState(
-            payload=payload,
-            signal_id=signal_id,
-            dedupe_key=dedupe_key,
-            run_id=run_id,
-            received_at=_now(),
-        )
-        notifier = TelegramNotifier(settings)
-        try:
-            pipeline_state = build_pipeline().run(pipeline_state, db, settings)
-        except Exception as exc:
-            notifier.system_error(exc.__class__.__name__)
-            raise
+        if pipeline_error is not None:
+            notifier.system_error(pipeline_error.__class__.__name__)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "status": "error",
+                    "reason": "pipeline_error",
+                    "error_type": pipeline_error.__class__.__name__,
+                },
+            )
+
+        if pipeline_state is None or response_body is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"status": "error", "reason": "pipeline_missing_response"},
+            )
+
         if pipeline_state.risk_decision == "blocked":
             notifier.signal_blocked(
                 symbol=payload.symbol,
@@ -217,23 +294,4 @@ async def receive_tradingview_webhook(
                 side=payload.side,
             )
 
-        log_audit(
-            db,
-            event_type="webhook",
-            status_value="accepted",
-            path_token_valid=True,
-            payload_token_valid=True,
-            source=payload.source.value,
-            dedupe_key=dedupe_key,
-        )
-
-        return {
-            "status": "accepted",
-            "run_id": run_id,
-            "signal_id": signal_id,
-            "dedupe_key": dedupe_key,
-            "risk_decision": pipeline_state.risk_decision,
-            "risk_reason_codes": pipeline_state.risk_reason_codes,
-            "paper_order_id": pipeline_state.paper_order_id,
-            "paper_order_status": pipeline_state.paper_order_status,
-        }
+        return response_body

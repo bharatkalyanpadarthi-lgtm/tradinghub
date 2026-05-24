@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import json
+import math
 import sqlite3
 from zoneinfo import ZoneInfo
 
@@ -174,6 +175,8 @@ class RiskGateStage:
             reason_codes.append("cooldown_active")
         if state.atr is None:
             reason_codes.append("atr_missing")
+        elif not math.isfinite(state.atr) or state.atr <= 0:
+            reason_codes.append("atr_invalid")
         if daily_loss >= settings.daily_loss_cap_eur:
             reason_codes.append("daily_loss_cap_reached")
         if not state.signal_valid:

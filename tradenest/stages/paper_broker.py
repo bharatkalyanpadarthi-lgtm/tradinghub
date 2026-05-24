@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
+import math
 import sqlite3
 from typing import Optional
 
@@ -86,7 +87,13 @@ class PaperBrokerStage:
             state.paper_order_status = "skipped"
             return state
 
-        if state.payload.price is None or state.atr is None:
+        if (
+            state.payload.price is None
+            or state.payload.price <= 0
+            or state.atr is None
+            or not math.isfinite(state.atr)
+            or state.atr <= 0
+        ):
             state.paper_order_status = "skipped"
             return state
 

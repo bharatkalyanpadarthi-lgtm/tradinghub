@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 from typing import Optional
 
@@ -33,7 +34,11 @@ def _fixture_atr(state: SignalState) -> Optional[float]:
         value = state.payload.metadata.get("atr")
     if value is None:
         return None
-    return float(value)
+    try:
+        atr = float(value)
+    except (TypeError, ValueError):
+        return None
+    return atr if math.isfinite(atr) else None
 
 
 class MarketFeaturesStage:

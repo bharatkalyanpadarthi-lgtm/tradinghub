@@ -18,7 +18,7 @@
 ## Daily Check
 
 - Run `ops/scripts/healthcheck.sh` from `~/tradenest-runtime`.
-- Confirm backend health responds: `curl -fsS http://127.0.0.1:8000/api/status`.
+- Confirm backend health responds with the admin header: `curl -fsS -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" http://127.0.0.1:8000/api/status`.
 - Confirm dashboard reachable at `http://127.0.0.1:3000`.
 - Open Mission Control and confirm backend health is `ok`.
 - Check `/status` in Telegram if enabled.
@@ -60,7 +60,7 @@
 - Confirm launchd services are loaded or start them manually.
 - Run `ops/scripts/healthcheck.sh` from `~/tradenest-runtime`.
 - Open dashboard at `http://127.0.0.1:3000`.
-- Call `curl -fsS http://127.0.0.1:8000/api/status`.
+- Call `curl -fsS -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" http://127.0.0.1:8000/api/status`.
 - Send Telegram `/status` if Telegram is enabled.
 - Run one replay dry-run using `tradenest/replay/sample_signals.csv` with `--speed 20 --dry-run`.
 
@@ -75,18 +75,18 @@
 
 Run this before pointing a real TradingView alert at the public webhook, and any time the tunnel or tokens change. Full procedures live in `docs/cloudflare-tradingview-setup.md`; this list is the gating one.
 
-- Backend reachable locally: `curl -fsS http://127.0.0.1:8000/api/status` → `backend_health: ok`.
+- Backend reachable locally with admin auth: `curl -fsS -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" http://127.0.0.1:8000/api/status` → `backend_health: ok`.
 - `~/tradenest-runtime/ops/scripts/healthcheck.sh` exits 0.
 - Cloudflare tunnel connector status is **Healthy** (dashboard or `cloudflared tunnel info tradenest-webhook`).
 - Public hostname resolves: `dig +short tradenest-webhook.<your-domain>` returns Cloudflare IPs.
-- Public health probe matches local: `curl -fsS https://tradenest-webhook.<your-domain>/api/status` returns the same body as the local call.
+- Public `/api/status` without `X-TradeNest-Admin-Token` returns `HTTP 401 invalid_admin_token`.
 - Webhook smoke test (with a fresh ISO timestamp) returns 2xx and lands a row in `signals` + `runs`.
 - Wrong path token returns `HTTP 401 invalid_path_token`.
 - Wrong `auth_token` returns `HTTP 401 invalid_payload_auth_token`.
 - Stale `event_time` returns `HTTP 422 stale_tradingview_signal`.
 - Duplicate of an accepted signal returns `HTTP 409 duplicate_signal`.
 - No public hostname exists for the dashboard: `dig +short tradenest-dashboard.<your-domain>` is empty.
-- Kill switch exercised: `POST /api/system/kill` blocks the next signal with `risk_decision = blocked`; `POST /api/system/unkill` clears it.
+- Kill switch exercised with `X-TradeNest-Admin-Token`: `POST /api/system/kill` blocks the next signal with `risk_decision = blocked`; `POST /api/system/unkill` clears it.
 - `.env` shows `TRADENEST_MODE=paper` and `TRADENEST_KILL_SWITCH=false`.
 - `git check-ignore .env` prints `.env` (i.e. it stays out of the repo).
 

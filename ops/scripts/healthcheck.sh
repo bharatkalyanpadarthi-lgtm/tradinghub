@@ -2,6 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="${TRADENEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+if [ -f "$ROOT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
 BACKEND_URL="${TRADENEST_BACKEND_URL:-http://127.0.0.1:8000}"
 DASHBOARD_URL="${TRADENEST_DASHBOARD_URL:-http://127.0.0.1:3000}"
 DB_PATH="${TRADENEST_DB_PATH:-$ROOT_DIR/data/tradenest.sqlite3}"
@@ -20,7 +28,17 @@ check() {
   fi
 }
 
-check "backend /api/status reachable" curl -fsS "$BACKEND_URL/api/status"
+backend_status() {
+  if [ -z "${TRADENEST_ADMIN_TOKEN:-}" ]; then
+    printf 'TRADENEST_ADMIN_TOKEN is required for /api/status\n' >&2
+    return 1
+  fi
+  curl -fsS \
+    -H "X-TradeNest-Admin-Token: $TRADENEST_ADMIN_TOKEN" \
+    "$BACKEND_URL/api/status" >/dev/null
+}
+
+check "backend /api/status reachable" backend_status
 
 check "sqlite database exists" test -f "$DB_PATH"
 check "sqlite database writable" test -w "$DB_PATH"

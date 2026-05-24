@@ -17,10 +17,9 @@ set -a
 source ".env"
 set +a
 
-# Next.js needs the API base baked into the runtime env. Prefer an
-# explicit override, then fall back to the backend URL from .env, then
-# the conventional local default.
-export NEXT_PUBLIC_TRADENEST_API_BASE="${NEXT_PUBLIC_TRADENEST_API_BASE:-${TRADENEST_BACKEND_URL:-http://127.0.0.1:8000}}"
+# The dashboard proxies API calls server-side so the admin token stays
+# out of the browser bundle. Keep the backend URL available at runtime.
+export TRADENEST_BACKEND_URL="${TRADENEST_BACKEND_URL:-http://127.0.0.1:8000}"
 
 cd dashboard
 

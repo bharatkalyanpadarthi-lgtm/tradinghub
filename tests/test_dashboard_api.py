@@ -10,6 +10,21 @@ def post_signal(client, settings, payload):
     )
 
 
+def test_api_routes_require_admin_token(client):
+    response = client.get(
+        "/api/status",
+        headers={"X-TradeNest-Admin-Token": "wrong"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["reason"] == "invalid_admin_token"
+
+
+def test_generated_api_docs_are_not_public(client):
+    assert client.get("/openapi.json").status_code == 404
+    assert client.get("/docs").status_code == 404
+
+
 def test_api_status_returns_dashboard_fields(client, settings, payload):
     post_signal(client, settings, payload)
 
@@ -88,3 +103,41 @@ def test_api_risk_status_returns_dashboard_fields(client, settings, payload):
     assert data["max_open_positions"] == settings.max_open_positions
     assert data["allowed_symbols"] == list(settings.allowed_symbols)
     assert data["allowed_strategies"] == [settings.strategy]
+
+
+def test_telegram_webhook_requires_secret_header(client):
+    response = client.post(
+        "/telegram/webhook",
+        headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"},
+        json={},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["reason"] == "invalid_telegram_webhook_secret"
+
+
+def test_telegram_webhook_accepts_configured_secret(client, settings):
+    response = client.post(
+        "/telegram/webhook",
+        headers={
+            "X-Telegram-Bot-Api-Secret-Token": settings.telegram_webhook_secret_token
+        },
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"handled": False}
+
+
+def test_telegram_webhook_rejects_invalid_json(client, settings):
+    response = client.post(
+        "/telegram/webhook",
+        headers={
+            "X-Telegram-Bot-Api-Secret-Token": settings.telegram_webhook_secret_token,
+            "Content-Type": "application/json",
+        },
+        content="{",
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["reason"] == "invalid_json_body"

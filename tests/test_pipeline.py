@@ -175,6 +175,20 @@ def test_missing_atr_blocks_signal(client, settings, payload):
     assert "atr_missing" in reason_codes(row)
 
 
+def test_non_positive_atr_blocks_signal_without_opening_order(client, settings, payload):
+    payload["metadata"] = {"atr_fixture": -10}
+
+    response = post_signal(client, settings, payload)
+
+    assert response.status_code == 200
+    assert response.json()["risk_decision"] == "blocked"
+    row = latest_risk_decision(settings)
+    assert "atr_invalid" in reason_codes(row)
+    with session(settings.db_path) as db:
+        order_count = db.execute("SELECT COUNT(*) FROM paper_orders").fetchone()[0]
+    assert order_count == 0
+
+
 def test_candle_data_calculates_atr_without_fixture(client, settings, payload):
     payload["metadata"] = {}
     payload["candles"] = [

@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from .auth import require_admin_request, require_telegram_webhook_secret
 from .config import Settings, get_settings
 from .db import log_audit, session
 from .services.telegram_service import (
@@ -17,6 +18,8 @@ from .services.telegram_service import (
 
 
 router = APIRouter()
+api_router = APIRouter(prefix="/api", dependencies=[Depends(require_admin_request)])
+telegram_router = APIRouter()
 
 
 def _row_to_dict(row) -> Dict[str, Any]:
@@ -81,14 +84,14 @@ def _journal_entries(db) -> list[Dict[str, Any]]:
     return entries
 
 
-@router.get("/api/status")
+@api_router.get("/status")
 def get_status(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         summary = status_summary(db, settings)
     return {"backend_health": "ok", **summary}
 
 
-@router.get("/api/risk/status")
+@api_router.get("/risk/status")
 def get_risk_status(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         today = today_summary(db, settings)
@@ -111,7 +114,7 @@ def get_risk_status(settings: Settings = Depends(get_settings)) -> Dict[str, Any
     }
 
 
-@router.get("/api/system/state")
+@api_router.get("/system/state")
 def get_system_state(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         rows = db.execute("SELECT key, value, updated_at FROM system_state").fetchall()
@@ -122,7 +125,7 @@ def get_system_state(settings: Settings = Depends(get_settings)) -> Dict[str, An
     }
 
 
-@router.post("/api/system/kill")
+@api_router.post("/system/kill")
 def kill_system(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         set_system_state(db, "kill_switch", "true")
@@ -130,7 +133,7 @@ def kill_system(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     return {"kill_switch": True}
 
 
-@router.post("/api/system/unkill")
+@api_router.post("/system/unkill")
 def unkill_system(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         set_system_state(db, "kill_switch", "false")
@@ -138,7 +141,7 @@ def unkill_system(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     return {"kill_switch": False}
 
 
-@router.get("/api/runs")
+@api_router.get("/runs")
 def list_runs(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         rows = db.execute(
@@ -172,7 +175,7 @@ def list_runs(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     return {"runs": runs}
 
 
-@router.get("/api/runs/{run_id}")
+@api_router.get("/runs/{run_id}")
 def get_run(run_id: int, settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         run = db.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -208,7 +211,7 @@ def get_run(run_id: int, settings: Settings = Depends(get_settings)) -> Dict[str
     }
 
 
-@router.get("/api/journal")
+@api_router.get("/journal")
 def get_journal(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     with session(settings.db_path) as db:
         rows = db.execute(
@@ -222,10 +225,24 @@ def get_journal(settings: Settings = Depends(get_settings)) -> Dict[str, Any]:
     return {"paper_orders": [dict(row) for row in rows], "entries": entries}
 
 
-@router.post("/telegram/webhook")
+@telegram_router.post(
+    "/telegram/webhook",
+    dependencies=[Depends(require_telegram_webhook_secret)],
+)
 async def telegram_webhook(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> Dict[str, Any]:
-    handled = handle_telegram_update(await request.json(), settings)
+    try:
+        update = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=422,
+            detail={"status": "rejected", "reason": "invalid_json_body"},
+        )
+    handled = handle_telegram_update(update, settings)
     return {"handled": handled}
+
+
+router.include_router(api_router)
+router.include_router(telegram_router)
