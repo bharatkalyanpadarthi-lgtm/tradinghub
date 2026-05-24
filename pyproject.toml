@@ -26,3 +26,8 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "integration: end-to-end application behavior across API, pipeline, and persistence",
+    "unit: focused tests for isolated helpers and validation rules",
+]

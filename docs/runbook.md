@@ -208,6 +208,18 @@ tradenest-replay \
 Expected: payloads show `source = Replay`, `auth_token = [redacted]`, and
 `posted = 0`.
 
+## Run Tests
+
+From the repo, run the full local verification suite:
+
+```bash
+ops/scripts/test_all.sh
+```
+
+This runs backend pytest, dashboard TypeScript checking, and the
+dashboard production build. GitHub Actions runs the same checks on
+pushes and pull requests to `main`.
+
 ## Real Replay
 
 ```bash
